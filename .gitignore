@@ -1,0 +1,4 @@
+vendor
+releases/*
+config.yml
+.idea

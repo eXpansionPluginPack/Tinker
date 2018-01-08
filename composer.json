@@ -1,0 +1,23 @@
+{
+  "name": "eXpansionPluginPack/tinker",
+  "description": "Command app to release a new eXpansion versions",
+  "authors": [
+    {
+      "name": "Oliver de Cramer",
+      "email": "oliverde8@gmail.com"
+    }
+  ],
+  "require": {
+    "symfony/console": "^3.2",
+    "knplabs/github-api": "^2.2",
+    "symfony/yaml": "^3.2",
+    "symfony/filesystem": "^3.2",
+    "symfony/process": "^3.2"
+  },
+  "config": {
+    "bin-dir": "bin"
+  },
+  "autoload": {
+    "psr-0": { "": "src/" }
+  }
+}
