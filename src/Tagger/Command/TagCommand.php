@@ -32,6 +32,9 @@ class TagCommand extends Command
     /** @var string */
     protected $appRepo;
 
+    /** @var bool  */
+    protected $stable = true;
+
     /**
      * TagCommand constructor.
      *
@@ -64,7 +67,7 @@ class TagCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $fs = new Filesystem();
-        $fs->remove("release");
+//        $fs->remove("release");
 
         $client = new \Github\Client();
         $client->authenticate($this->githubToken, null, Client::AUTH_HTTP_TOKEN);
@@ -78,14 +81,22 @@ class TagCommand extends Command
         $gitSourceRepository = new RepositoryHelper($io, $fs, $this->sourceRepo);
         $pathToSource = $gitSourceRepository->getEditionFolder();
 
+        /**
+         * Updating source codes.
+         */
         $io->section("Deleting release branch if already exists.");
         try {
             $gitSourceRepository->deleteBranch($branchName);
         } catch (ProcessFailedException $exception) {
-            $io->note("Branch didn't exist.");
+            $io->note("Sources - Branch didn't exist.");
+        }
+        try {
+            $gitAppRepository->deleteBranch($branchName);
+        } catch (ProcessFailedException $exception) {
+            $io->note("App - Branch didn't exist.");
         }
 
-        $io->section('Updating version in source codes');
+        $io->section('Sources - Updating version in source codes');
         $gitSourceRepository->createBranch('master', $branchName);
         $this->findAndUpdateVersion($gitSourceRepository, $pathToSource, $tagName);
         $gitSourceRepository->commit("Bump version $tagName");
@@ -105,13 +116,49 @@ class TagCommand extends Command
             ]
         );
 
-        $io->section('Install latest tag');
+        /*
+         *Install latests tag.
+         */
+        $io->section('App - Composer - Updating Composer json to install latest version.');
+        $gitAppRepository->createBranch('master', $branchName);
+
+        $composerOriginalContent = file_get_contents($gitAppRepository->getEditionFolder(). '/composer.json');
+        $composer = json_decode($composerOriginalContent);
+        $composer->require->{"expansion-mp/expansion"} = $tagName;
+        file_put_contents($gitAppRepository->getEditionFolder(). '/composer.json', json_encode($composer, JSON_PRETTY_PRINT));
+
+        $io->confirm("Will run 'composer update' be sure packatges are up to date in packagist.", "It's ok, rock and roll!");
+
+        $io->section('App - Composer - Running composer update.');
         ProcessRunner::runCommand(
             sprintf(
                 'cd %s && composer update --prefer-dist --no-scripts --no-suggest --ignore-platform-reqs',
                 $gitAppRepository->getEditionFolder()
-            )
+            ),
+            600
         );
+
+        $io->section('App - Composer - Updating Composer json for generic tag usage.');
+        $composer->require->{"expansion-mp/expansion"} = $this->getGenericTag($io, $tagName);
+        $composerContent = json_encode($composer, JSON_PRETTY_PRINT);
+        file_put_contents($gitAppRepository->getEditionFolder(). '/composer.json', $composerContent);
+
+        if ($this->stable && $composerOriginalContent != $composerContent) {
+            $gitAppRepository->add('composer.json');
+            $appNeedsUpDate = true;
+        }
+
+        $appNeedsUpDate = false;
+
+        $io->section('App - Updating base config files.');
+        $appNeedsUpDate = $this->updateConfigFiles($io, $gitSourceRepository, $gitAppRepository) || $appNeedsUpDate;
+        $appNeedsUpDate = $this->updateConfigFiles($io, $gitSourceRepository, $gitAppRepository) || $appNeedsUpDate;
+        if ($appNeedsUpDate) {
+            $io->section("App - Pushing changes to : $tagName");
+
+            $gitAppRepository->commit("Bump for version $tagName");
+            $gitAppRepository->push($branchName);
+        }
 
         $io->section('Create release zip');
         $zipPath = $this->createZipArchive($gitAppRepository, $tagName);
@@ -173,5 +220,66 @@ class TagCommand extends Command
         $zip->close();
 
         return "release/eXpansion-v$tagName.zip";
+    }
+
+    protected function getGenericTag(SymfonyStyle $io, $tagName)
+    {
+        $parts = explode(".", $tagName);
+
+        if (count($parts) != 4) {
+            if (!$io->ask('Version $tagName is not stable version! Continue ?')) {
+                exit;
+            }
+            $this->stable = false;
+            return $tagName;
+        }
+
+        $parts[2] = '*';
+        $parts[3] = '*';
+
+        return implode('.', $parts);
+    }
+
+    protected function updateConfigFiles(SymfonyStyle $io, RepositoryHelper $sourceRepo, RepositoryHelper $appRepo)
+    {
+        $files = [
+            'app/config',
+            'app/AppKernel.php',
+        ];
+        $updated = false;
+
+        foreach ($files as $path) {
+            $fpath = $sourceRepo->getEditionFolder() . '/' . $path;
+            if (is_dir($fpath)) {
+                foreach (scandir($fpath) as $dirPath) {
+                    $updated = $this->updateConfigFile($io, $sourceRepo, $appRepo, $path . '/' . $dirPath) || $updated;
+                }
+            } else {
+                $updated = $this->updateConfigFile($io, $sourceRepo, $appRepo, $path) || $updated;
+            }
+        }
+
+        return $updated;
+    }
+
+    protected function updateConfigFile(SymfonyStyle $io, RepositoryHelper $sourceRepo, RepositoryHelper $appRepo, $path)
+    {
+        if (is_dir($sourceRepo->getEditionFolder() . '/' . $path)) {
+            return false;
+        }
+
+        $sourceFile = file_get_contents($sourceRepo->getEditionFolder() . '/' . $path);
+        $appFile = file_get_contents($appRepo->getEditionFolder() . '/' . $path);
+
+        if ($sourceFile != $appFile) {
+            $io->note("Updated file $path");
+
+            file_put_contents($appRepo->getEditionFolder() . '/' . $path, $sourceFile);
+            $appRepo->add($path);
+
+            return true;
+        } else {
+            $io->note("no changes ignoring file $path");
+        }
     }
 }

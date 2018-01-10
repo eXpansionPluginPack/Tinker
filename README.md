@@ -3,6 +3,10 @@
 This command allows to easily create a new eXpansion release. It will : 
 * Update eXpansion source code to update version number.
 * Create a new tag 
+* Update the skeleton app repository with : 
+    * New AppKernel
+    * New config files or config dist files.
+    * New composer json if necessery.
 * Create an archive with the latest sources
 * Create a github release with the archive. 
 
@@ -16,13 +20,12 @@ This command allows to easily create a new eXpansion release. It will :
     bin/console.php eXpansion:release:tag 2.0.1.12
     ```
 5. Manually update release notes in github.
-6. Update mp-expansion.com 
+6. Check the release branch for the application and merge if necessery.
+7. Update mp-expansion.com 
 
 ## Improvements needed. 
 
 The tool is not perfect. 
-
-* It should update the application repositories `composer.json` in order to be sure it's the proper version.
 
 * Think of a way to handle change logs.
 
