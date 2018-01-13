@@ -67,13 +67,14 @@ class TagCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $fs = new Filesystem();
-//        $fs->remove("release");
+        $fs->remove("release");
 
         $client = new \Github\Client();
         $client->authenticate($this->githubToken, null, Client::AUTH_HTTP_TOKEN);
 
         $tagName = $input->getArgument('tag');
-        $branchName = "release-$tagName";
+        $prepareBranchName = "prepare-$tagName";
+        $releaseBranchName = "release-$tagName";
 
         $io->ask('Are you ready?', 'Here we goo!');
 
@@ -86,41 +87,56 @@ class TagCommand extends Command
          */
         $io->section("Deleting release branch if already exists.");
         try {
-            $gitSourceRepository->deleteBranch($branchName);
+            $gitSourceRepository->deleteBranch($releaseBranchName);
         } catch (ProcessFailedException $exception) {
-            $io->note("Sources - Branch didn't exist.");
+            $io->note("Sources - Branch $releaseBranchName didn't exist.");
         }
         try {
-            $gitAppRepository->deleteBranch($branchName);
+            $gitSourceRepository->deleteBranch($prepareBranchName);
         } catch (ProcessFailedException $exception) {
-            $io->note("App - Branch didn't exist.");
+            $io->note("Sources - Branch $prepareBranchName didn't exist.");
         }
+        try {
+            $gitAppRepository->deleteBranch($releaseBranchName);
+        } catch (ProcessFailedException $exception) {
+            $io->note("App - Branch $releaseBranchName didn't exist.");
+        }
+
+        $io->section('Sources - Updating change logs');
+        $gitSourceRepository->createBranch('master', $prepareBranchName);
+        $changeLog = $this->updateChangeLogs($gitSourceRepository, $tagName);
+        $gitSourceRepository->commit("Update changelogs for : $tagName");
+        $gitSourceRepository->push($prepareBranchName);
+
 
         $io->section('Sources - Updating version in source codes');
-        $gitSourceRepository->createBranch('master', $branchName);
+        $gitSourceRepository->createBranch($prepareBranchName, $releaseBranchName);
         $this->findAndUpdateVersion($gitSourceRepository, $pathToSource, $tagName);
         $gitSourceRepository->commit("Bump version $tagName");
-        $gitSourceRepository->push($branchName);
+        $gitSourceRepository->push($releaseBranchName);
 
-        if (!$io->confirm("Branch $branchName was pushed, is all ok?")) {
+
+        if (!$io->confirm("Branch $releaseBranchName was pushed, is all ok?")) {
             return;
         }
-        $gitSourceRepository->tagRelease($branchName, $tagName);
+        $gitSourceRepository->tagRelease($releaseBranchName, $tagName);
 
         $release = $client->api('repo')->releases()->create(
             $gitSourceRepository->getOwner(),
             $gitSourceRepository->getRepository(),
             [
                 'tag_name' => $tagName,
+                'name' => "v$tagName",
+                "body" => "$changeLog",
                 'prerelease' => $input->getOption('prerelease'),
             ]
         );
 
         /*
-         *Install latests tag.
+         *Install latest tag.
          */
         $io->section('App - Composer - Updating Composer json to install latest version.');
-        $gitAppRepository->createBranch('master', $branchName);
+        $gitAppRepository->createBranch('master', $releaseBranchName);
 
         $composerOriginalContent = file_get_contents($gitAppRepository->getEditionFolder(). '/composer.json');
         $composer = json_decode($composerOriginalContent);
@@ -157,7 +173,7 @@ class TagCommand extends Command
             $io->section("App - Pushing changes to : $tagName");
 
             $gitAppRepository->commit("Bump for version $tagName");
-            $gitAppRepository->push($branchName);
+            $gitAppRepository->push($releaseBranchName);
         }
 
         $io->section('Create release zip');
@@ -175,6 +191,41 @@ class TagCommand extends Command
         );
     }
 
+    protected function updateChangeLogs(RepositoryHelper $repo, $tag)
+    {
+        $tagPieces = explode('.', $tag);
+        $file = "CHANGELOG-$tagPieces[0].$tagPieces[1].$tagPieces[2].md";
+        $newChangeLogs = '';
+        $chnageLog = '';
+        $start = false;
+
+        $handle = fopen($repo->getEditionFolder() . "/$file", "r");
+        var_dump("# $tagPieces[0].$tagPieces[1].$tagPieces[2].x");
+        while (($line = fgets($handle)) !== false) {
+            var_dump(strpos($line,"# $tagPieces[0].$tagPieces[1].$tagPieces[2].x"));
+            if (strpos($line,"# $tagPieces[0].$tagPieces[1].$tagPieces[2].x") === 0) {
+                $start = true;
+                $date = date('Y-m-d');
+                $newChangeLogs .= "# $tag ($date)";
+            } else {
+                $newChangeLogs .= "$line\n";
+
+                if (strpos($line,'# ') === 0) {
+                    $start = false;
+                }
+            }
+
+            if ($start) {
+                $chnageLog .= "$line";
+            }
+        }
+
+        fclose($handle);
+        file_put_contents($repo->getEditionFolder() . "/$file", $newChangeLogs);
+        $repo->add($file);
+
+        return $chnageLog;
+    }
 
     protected function findAndUpdateVersion(RepositoryHelper $repo, $pathToSource, $tag)
     {
