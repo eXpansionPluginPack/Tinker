@@ -148,7 +148,7 @@ class TagCommand extends Command
         $io->section('App - Composer - Running composer update.');
         ProcessRunner::runCommand(
             sprintf(
-                'cd %s && composer update --prefer-dist --no-scripts --no-suggest --ignore-platform-reqs',
+                'cd %s && composer update --prefer-dist --no-scripts --no-suggest --ignore-platform-reqs  --no-dev',
                 $gitAppRepository->getEditionFolder()
             ),
             600
