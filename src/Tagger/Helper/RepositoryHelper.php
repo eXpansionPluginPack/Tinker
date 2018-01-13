@@ -71,7 +71,7 @@ class RepositoryHelper
         try {
             ProcessRunner::runCommand(
                 sprintf(
-                    'git clone -b %s --single-branch git@github.com:%s/%s.git %s',
+                    'git clone -b %s --single-branch https://github.com/%s/%s.git %s',
                     $mainBranch,
                     $owner,
                     $repository,
