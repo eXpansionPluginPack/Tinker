@@ -27,6 +27,4 @@ This command allows to easily create a new eXpansion release. It will :
 
 The tool is not perfect. 
 
-* Handle multi branches for sources. (Version 2.0 from branch 2.0, 21 from 2.1 and so on.)'
-
 * Make more generic? 
