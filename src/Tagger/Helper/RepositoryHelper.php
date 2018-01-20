@@ -71,7 +71,7 @@ class RepositoryHelper
         try {
             ProcessRunner::runCommand(
                 sprintf(
-                    'git clone -b %s --single-branch https://github.com/%s/%s.git %s',
+                    'git clone -b %s git@github.com:%s/%s.git %s',
                     $mainBranch,
                     $owner,
                     $repository,
@@ -112,7 +112,7 @@ class RepositoryHelper
         try {
             ProcessRunner::runCommand(
                 sprintf(
-                    'cd %s && git checkout %s && git pull && git checkout -b %s',
+                    'cd %s && git checkout %s && git checkout -b %s',
                     $this->editionFolder,
                     $mainBranch,
                     $newBranch
@@ -187,7 +187,7 @@ class RepositoryHelper
     public function tagRelease($branch, $tagName)
     {
         ProcessRunner::runCommand(sprintf(
-                                      'cd %s && git checkout %s && git pull && git tag -a %s -m "" && git push origin %s',
+                                      'cd %s && git checkout %s && git tag -a %s -m "" && git push origin %s',
                                       $this->editionFolder,
                                       $branch,
                                       $tagName,

@@ -142,19 +142,28 @@ class TagCommand extends Command
 
         $composerOriginalContent = file_get_contents($gitAppRepository->getEditionFolder(). '/composer.json');
         $composer = json_decode($composerOriginalContent);
-        $composer->require->{"expansion-mp/expansion"} = $tagName;
+        $composer->require->{"expansion-mp/expansion"} = "$tagName";
         file_put_contents($gitAppRepository->getEditionFolder(). '/composer.json', json_encode($composer, JSON_PRETTY_PRINT));
 
-        $io->confirm("Will run 'composer update' be sure packatges are up to date in packagist.", "It's ok, rock and roll!");
+        do {
+            $io->confirm("Will run 'composer update' be sure packatges are up to date in packagist.", "It's ok, rock and roll!");
+            $error = false;
 
-        $io->section('App - Composer - Running composer update.');
-        ProcessRunner::runCommand(
-            sprintf(
-                'cd %s && composer update --prefer-dist --no-scripts --no-suggest --ignore-platform-reqs --no-dev',
-                $gitAppRepository->getEditionFolder()
-            ),
-            600
-        );
+            try {
+                $io->section('App - Composer - Running composer update.');
+                ProcessRunner::runCommand(
+                    sprintf(
+                        'cd %s && composer update --prefer-dist --prefer-stable --no-suggest --no-dev -o',
+                        $gitAppRepository->getEditionFolder()
+                    ),
+                    600
+                );
+            } catch (\Exception $e) {
+                $output->writeln("<error>" . $e->getMessage() . "</error>");
+                $error = true;
+            }
+
+        } while($error);
 
         $io->section('App - Composer - Updating Composer json for generic tag usage.');
         $composer->require->{"expansion-mp/expansion"} = $this->getGenericTag($io, $tagName);
@@ -165,8 +174,6 @@ class TagCommand extends Command
             $gitAppRepository->add('composer.json');
             $appNeedsUpDate = true;
         }
-
-        $appNeedsUpDate = false;
 
         $io->section('App - Updating base config files.');
         $appNeedsUpDate = $this->updateConfigFiles($io, $gitSourceRepository, $gitAppRepository) || $appNeedsUpDate;
@@ -255,20 +262,27 @@ class TagCommand extends Command
         $path = $repo->getEditionFolder();
 
         // Create recursive directory iterator
-        /** @var SplFileInfo[] $files */
+        /** @var \SplFileInfo[] $files */
         $files = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($path),
             \RecursiveIteratorIterator::LEAVES_ONLY
         );
 
+        $ignore = array (
+            '.git',
+            'parameters.yml',
+            'expansion.yml',
+        );
+
         foreach ($files as $name => $file)
         {
             // Skip directories (they would be added automatically)
-            if (!$file->isDir())
+            if (!$file->isDir() && !in_array($file->getFilename(), $ignore))
             {
                 // Get real and relative path for current file
                 $filePath = $file->getRealPath();
-                $relativePath = substr($filePath, strlen($path) + 1);
+                $rFilePath = $file->getPath() . '/' . $file->getFilename();
+                $relativePath = substr($rFilePath, strlen($path) + 1);
 
                 // Add current file to archive
                 $zip->addFile($filePath, $relativePath);
