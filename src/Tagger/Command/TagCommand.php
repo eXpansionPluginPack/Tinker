@@ -76,6 +76,8 @@ class TagCommand extends Command
         $prepareBranchName = "prepare-$tagName";
         $releaseBranchName = "release-$tagName";
 
+        $originBranch = $this->getOriginBranch($tagName);
+
         $io->ask('Are you ready?', 'Here we goo!');
 
         $gitAppRepository = new RepositoryHelper($io, $fs, $this->appRepo);
@@ -103,7 +105,7 @@ class TagCommand extends Command
         }
 
         $io->section('Sources - Updating change logs');
-        $gitSourceRepository->createBranch('master', $prepareBranchName);
+        $gitSourceRepository->createBranch($originBranch, $prepareBranchName);
         $changeLog = $this->updateChangeLogs($gitSourceRepository, $tagName);
         $gitSourceRepository->commit("Update changelogs for : $tagName");
         $gitSourceRepository->push($prepareBranchName);
@@ -148,7 +150,7 @@ class TagCommand extends Command
         $io->section('App - Composer - Running composer update.');
         ProcessRunner::runCommand(
             sprintf(
-                'cd %s && composer update --prefer-dist --no-scripts --no-suggest --ignore-platform-reqs  --no-dev',
+                'cd %s && composer update --prefer-dist --no-scripts --no-suggest --ignore-platform-reqs --no-dev',
                 $gitAppRepository->getEditionFolder()
             ),
             600
@@ -189,6 +191,12 @@ class TagCommand extends Command
             "application/zip",
             file_get_contents($zipPath)
         );
+    }
+
+    public function getOriginBranch($tagName) {
+        $tagPieces = explode('.', $tagName);
+
+        return "$tagPieces[0].$tagPieces[1].$tagPieces[2].x";
     }
 
     protected function updateChangeLogs(RepositoryHelper $repo, $tag)
